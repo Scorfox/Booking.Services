@@ -10,6 +10,11 @@ services:
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+    healthcheck:
+      test: /usr/bin/pg_isready
+      interval: 5s
+      timeout: 10s
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:management
@@ -20,3 +25,72 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: rabbit
       RABBITMQ_DEFAULT_PASS: rabbit
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  booking-gateway:
+    image: "ghcr.io/scorfox/booking.gateway:latest"
+    container_name: booking-gateway
+    ports:
+      - "8080:8080"
+    environment:
+     - RabbitMQ__Host=rabbitmq://192.168.3.126
+     - RabbitMQ__Username=rabbit
+     - RabbitMQ__Password=rabbit
+    restart: on-failure
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  booking-auth:
+    image: "ghcr.io/scorfox/booking.auth:latest"
+    container_name: booking-auth
+    ports:
+      - "6002:6002"
+    environment:
+      - RabbitMQ__Host=rabbitmq://192.168.3.126
+      - RabbitMQ__Username=rabbit
+      - RabbitMQ__Password=rabbit
+      - ConnectionStrings__PostgreSQL=Server=192.168.3.126;Database=booking-auth;Username=postgres;Password=postgres
+      - Archiver__Enable=false
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  booking-business:
+    image: "ghcr.io/scorfox/booking.business:latest"
+    container_name: booking-business
+    ports:
+      - "7000:7000"
+    environment:
+      - RabbitMQ__Host=rabbitmq://192.168.3.126
+      - RabbitMQ__Username=rabbit
+      - RabbitMQ__Password=rabbit
+      - ConnectionStrings__PostgreSQL=Server=192.168.3.126;Database=booking-business;Username=postgres;Password=postgres
+      - Archiver__Enable=false
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  booking-notifications:
+    image: "ghcr.io/scorfox/booking.notifications:latest"
+    container_name: booking-notifications
+    ports:
+      - "6000:6000"
+    environment:
+      - RabbitMQ__Host=rabbitmq://192.168.3.126
+      - RabbitMQ__Username=rabbit
+      - RabbitMQ__Password=rabbit
+    restart: on-failure
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
